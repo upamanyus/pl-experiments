@@ -34,7 +34,7 @@ inductive has_type : context → exp → typ → Prop
                         has_type Γ (plus e1 e2) num
 | t_times: ∀ (e1 e2:exp) Γ, has_type Γ e1 num → has_type Γ e2 num →
                         has_type Γ (times e1 e2) num
-| t_cat: ∀ (e1 e2:exp) Γ, has_type Γ e1 str → has_type Γ (cat e1 e2) str
+| t_cat: ∀ (e1 e2:exp) Γ, has_type Γ e1 str → has_type Γ e2 str → has_type Γ (cat e1 e2) str
 | t_len: ∀ (e1:exp) Γ, has_type Γ e1 str → has_type Γ (len e1) num
 | t_let: ∀ x (e1 e2:exp) Γ τ1 τ2 (He1 : has_type Γ e1 τ1) (He2:has_type (x ↦ τ1 ; Γ) e2 τ2),
                         has_type Γ (elet x e1 e2) τ2
@@ -100,7 +100,73 @@ case has_type.t_let : x e1 e2 Γ _ _ He1 He2 Hih1 Hih2 {
 }
 end
 
-theorem weakening :
+def context_included (Γ Γ':context) : Prop :=
+  ∀ x y,
+    Γ x = some y → Γ' x = some y
+
+theorem weakening' :
+∀ (Γ Γ':context) e' τ',
+context_included Γ Γ' →
+has_type Γ e' τ' →
+has_type Γ' e' τ'
+:=
+begin
+  introv,
+  intros Hinc Hty,
+  revert Γ',
+  induction Hty,
+  case has_type.t_let : x e1 e2 Γ _ _ He1 He2 Hih1 Hih2 {
+    intros Γ' Hinc,
+    specialize Hih1 _ Hinc,
+    specialize Hih2 (x ↦ Hty_τ1 ; Γ') _,
+    {
+    sorry, -- TODO: separate lemma
+    },
+    apply has_type.t_let,
+    assumption,
+    assumption,
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_var,
+    apply Hinc,
+    assumption,
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_lit_str,
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_lit_num,
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_plus,
+    { apply Hty_ih_ᾰ, assumption },
+    { apply Hty_ih_ᾰ_1, assumption },
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_times,
+    { apply Hty_ih_ᾰ, assumption },
+    { apply Hty_ih_ᾰ_1, assumption },
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_cat,
+    { apply Hty_ih_ᾰ, assumption },
+    { apply Hty_ih_ᾰ_1, assumption },
+  },
+  {
+    intros Γ' Hinc,
+    apply has_type.t_len,
+    { apply Hty_ih, assumption },
+  },
+end
+
+/--
+theorem weakening_bad :
 ∀ (Γ:context) e' τ' x τ,
 Γ x = none →
 has_type Γ e' τ' →
@@ -109,13 +175,15 @@ has_type (x ↦ τ ; Γ) e' τ'
 begin
   introv,
   intros Hfresh Hty,
+  revert x,
   induction Hty,
   -- pretty_cases,
   case has_type.t_let : x e1 e2 Γ _ _ He1 He2 Hih1 Hih2 {
     dedup,
-    specialize Hih1 Hfresh,
-    specialize Hih2 _,
-    { suffices : x_1 ≠ x,
+    intros xnew Hfresh,
+    specialize Hih1 _ Hfresh,
+    specialize Hih2 xnew,
+    { suffices : x ≠ x,
       { unfold update_context,
         rwa if_neg,
         assumption,
@@ -176,7 +244,7 @@ begin
     { apply Hty_ih, assumption },
   },
 end
-
+-/
 --  intros H1
 --  revert τb
 --  induction H1 with
