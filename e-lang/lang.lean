@@ -14,10 +14,11 @@ inductive exp : Type
 | len : exp → exp
 | elet : string → exp → exp → exp
 
-def context := (string → option typ)
 open exp
 open typ
 
+-- Statics:
+def context := (string → option typ)
 def update_context (Γ:context) (x:string) (t:typ) : context :=
   λ y,
   if x = y then
@@ -39,7 +40,31 @@ inductive has_type : context → exp → typ → Prop
 | t_let: ∀ x (e1 e2:exp) Γ τ1 τ2 (He1 : has_type Γ e1 τ1) (He2:has_type (x ↦ τ1 ; Γ) e2 τ2),
                         has_type Γ (elet x e1 e2) τ2
 
--- FIXME: The let rule is messed up. Need to assume that x ∉ Γ.
+def substitute (x':string) (e':exp) : exp → exp
+| (var y) := if (x' = y) then e' else var y
+| (lit_num n) := lit_num n
+| (lit_str s) := lit_str s
+| (plus e1 e2) := plus (substitute e1) (substitute e2)
+| (times e1 e2) := times (substitute e1) (substitute e2)
+| (cat e1 e2) := cat (substitute e1) (substitute e2)
+| (len e1) := len (substitute e1)
+| (elet y e1 e2) := if (x' = y) then elet y e1 e2 else elet y (substitute e1) (substitute e2)
+
+-- Dynamics
+inductive is_val : exp → Prop
+| v_num : ∀ n, is_val (lit_num n)
+| v_str : ∀ s, is_val (lit_str s)
+
+inductive is_step : exp → exp → Prop
+| s_plus : ∀ (n1 n2 n:ℕ), n = n1 + n2 → is_step (plus (lit_num n1) (lit_num n2)) (lit_num n)
+| s_cat : ∀ (s1 s2 s:string), s = s1 ++ s2 → is_step (cat (lit_str s1) (lit_str s2)) (lit_str s)
+| s_len : ∀ s, is_step (len (lit_str s)) (lit_num (string.length s))
+| s_let : ∀ x e1 e2, is_step (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-value
+-- the rest of these are the "search" transitions
+| s_plus_l : ∀ e1 e2 e1', is_step e1 e1' → is_step (plus e1 e2) (plus e1' e2)
+| s_plus_r : ∀ e1 e2 e2', is_step e2 e2' → is_step (plus e1 e2) (plus e1 e2')
+| s_cat_l : ∀ e1 e2 e1', is_step e1 e1' → is_step (cat e1 e2) (cat e1' e2)
+| s_cat_r : ∀ e1 e2 e2', is_step e2 e2' → is_step (cat e1 e2) (cat e1 e2')
 
 -- FIXME: notation needs to be surrounded by parens to work correctly
 
@@ -104,6 +129,26 @@ def context_included (Γ Γ':context) : Prop :=
   ∀ x y,
     Γ x = some y → Γ' x = some y
 
+def included_update :
+∀ Γ Γ' x τ,
+ context_included Γ Γ' →
+ context_included (x ↦ τ ; Γ) (x ↦ τ ; Γ')
+ :=
+begin
+ introv,
+ intros Hinc,
+ unfold context_included update_context at *,
+ intros x1 y Hlookup,
+ by_cases (x = x1),
+ { rwa if_pos at *; assumption,
+ },
+ rw if_neg at * ; try { assumption },
+ { apply Hinc, assumption }
+end
+
+-- XXX: we aren't modding out by α-equivalence, so the statement is slightly
+-- stronger so that the inductive hypothesis is stronger; without this,
+-- weakening for `let` doesn't work.
 theorem weakening' :
 ∀ (Γ Γ':context) e' τ',
 context_included Γ Γ' →
@@ -120,7 +165,8 @@ begin
     specialize Hih1 _ Hinc,
     specialize Hih2 (x ↦ Hty_τ1 ; Γ') _,
     {
-    sorry, -- TODO: separate lemma
+      apply included_update,
+      assumption,
     },
     apply has_type.t_let,
     assumption,
