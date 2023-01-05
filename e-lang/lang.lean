@@ -457,7 +457,8 @@ end
 theorem type_preservation1 :
   ∀ e τ e',
   empty_ctx ⊢ e : τ →
-  (e ↦str e') → empty_ctx ⊢ e' : τ :=
+  (e ↦str e') →
+  empty_ctx ⊢ e' : τ :=
 begin
   introv Hty Hstep,
   revert e',
@@ -495,6 +496,33 @@ begin
   },
 end
 
+-- This version does induction over the step relation. Inversion for typing
+-- judgements is nice (e.g. cases Hty turns the unknown τ into something more
+-- specific), but there are more top-level cases because there are more step
+-- rules than typing rules.
+theorem type_preservation2 :
+  ∀ e τ e',
+  empty_ctx ⊢ e : τ →
+  (e ↦str e') →
+  empty_ctx ⊢ e' : τ :=
+begin
+  introv Hty Hstep,
+  revert τ,
+  induction Hstep;
+  try { by {
+    intros τ Hty,
+    cases Hty,
+    constructor
+  }},
+  {
+    introv Hty, cases Hty,
+    apply substitution_property; assumption
+  },
+  repeat {
+    introv Hty, cases Hty,
+    constructor; assumption <|> {apply Hstep_ih, assumption }
+  },
+end
 
 theorem type_safety :
   ∀ e τ,
