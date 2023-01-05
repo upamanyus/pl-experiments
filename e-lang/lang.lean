@@ -55,22 +55,251 @@ inductive is_val : exp → Prop
 | v_num : ∀ n, is_val (lit_num n)
 | v_str : ∀ s, is_val (lit_str s)
 
+-- structural dynamics
 inductive is_step : exp → exp → Prop
 | s_plus : ∀ (n1 n2 n:ℕ), n = n1 + n2 → is_step (plus (lit_num n1) (lit_num n2)) (lit_num n)
+| s_times : ∀ (n1 n2 n:ℕ), n = n1 * n2 → is_step (times (lit_num n1) (lit_num n2)) (lit_num n)
 | s_cat : ∀ (s1 s2 s:string), s = s1 ++ s2 → is_step (cat (lit_str s1) (lit_str s2)) (lit_str s)
 | s_len : ∀ s, is_step (len (lit_str s)) (lit_num (string.length s))
 | s_let : ∀ x e1 e2, is_step (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-value
 -- the rest of these are the "search" transitions
 | s_plus_l : ∀ e1 e2 e1', is_step e1 e1' → is_step (plus e1 e2) (plus e1' e2)
-| s_plus_r : ∀ e1 e2 e2', is_step e2 e2' → is_step (plus e1 e2) (plus e1 e2')
+| s_plus_r : ∀ v1 e2 e2', is_val v1 → is_step e2 e2' → is_step (plus v1 e2) (plus v1 e2')
+| s_times_l : ∀ e1 e2 e1', is_step e1 e1' → is_step (times e1 e2) (times e1' e2)
+| s_times_r : ∀ v1 e2 e2', is_val v1 → is_step e2 e2' → is_step (times v1 e2) (times v1 e2')
 | s_cat_l : ∀ e1 e2 e1', is_step e1 e1' → is_step (cat e1 e2) (cat e1' e2)
-| s_cat_r : ∀ e1 e2 e2', is_step e2 e2' → is_step (cat e1 e2) (cat e1 e2')
+| s_cat_r : ∀ v1 e2 e2', is_val v1 → is_step e2 e2' → is_step (cat v1 e2) (cat v1 e2')
+| s_len_i : ∀ e1 e1', is_step e1 e1' → is_step (len e1) (len e1')
+
+-- contextual dynamics
+inductive ectx
+| empty : ectx
+| plus_l (E:ectx) (e2:exp) : ectx
+| plus_r (e1:exp) (E:ectx) : is_val e1 → ectx
+| times_l (E:ectx) (e2:exp) : ectx
+| times_r (e1:exp) (E:ectx) : is_val e1 → ectx
+| cat_l (E:ectx) (e2:exp) : ectx
+| cat_r (e1:exp) (E:ectx) : is_val e1 → ectx
+| len (E:ectx) : ectx
+
+def instantiate_ectx : ectx → exp → exp
+| ectx.empty e := e
+| (ectx.plus_l E1 e2) e := exp.plus (instantiate_ectx E1 e) e2
+| (ectx.plus_r e1 E2 _) e := exp.plus e1 (instantiate_ectx E2 e)
+| (ectx.times_l E1 e2) e := exp.times (instantiate_ectx E1 e) e2
+| (ectx.times_r e1 E2 _) e := exp.times e1 (instantiate_ectx E2 e)
+| (ectx.cat_l E1 e2) e := exp.cat (instantiate_ectx E1 e) e2
+| (ectx.cat_r e1 E2 _) e := exp.cat e1 (instantiate_ectx E2 e)
+| (ectx.len E) e := exp.len (instantiate_ectx E e)
+
+notation `∘` := ectx.empty
+notation E `{` e `}` := instantiate_ectx E e
+
+-- structural dynamics
+inductive is_step_instr : exp → exp → Prop
+| s_plus : ∀ (n1 n2 n:ℕ), n = n1 + n2 → is_step_instr (plus (lit_num n1) (lit_num n2)) (lit_num n)
+| s_times : ∀ (n1 n2 n:ℕ), n = n1 * n2 → is_step_instr (times (lit_num n1) (lit_num n2)) (lit_num n)
+| s_cat : ∀ (s1 s2 s:string), s = s1 ++ s2 → is_step_instr (cat (lit_str s1) (lit_str s2)) (lit_str s)
+| s_len : ∀ s, is_step_instr (len (lit_str s)) (lit_num (string.length s))
+| s_let : ∀ x e1 e2, is_step_instr (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-value
+
+inductive is_step_contextual (e e':exp) : Prop
+| s_ctx : ∀ E e0 e0', e = E{e0} → e' = E{e0'} → is_step_instr e0 e0' → is_step_contextual
+
+notation e ` ↦ctx ` e' := is_step_contextual e e'
+notation e ` ↦str ` e' := is_step e e'
+
+lemma instr_implies_structural :
+∀ e e',
+is_step_instr e e' →
+is_step e e' :=
+begin
+  introv Hinstr,
+  induction Hinstr,
+  { constructor, assumption },
+  { constructor, assumption },
+  { constructor, assumption },
+  { constructor },
+  { constructor },
+end
+
+theorem structural_eq_contextual :
+∀ e e', (e ↦str e') ↔ (e ↦ctx e') :=
+begin
+  intros,
+  split,
+  { -- str → ctx
+    intros Hstep,
+    induction Hstep,
+    {
+      apply (is_step_contextual.s_ctx ectx.empty),
+      { refl },
+      { refl },
+      constructor, assumption,
+    },
+    {
+      apply (is_step_contextual.s_ctx ectx.empty),
+      { refl },
+      { refl },
+      constructor, assumption,
+    },
+    {
+      apply (is_step_contextual.s_ctx ectx.empty),
+      { refl },
+      { refl },
+      constructor, assumption,
+    },
+    {
+      apply (is_step_contextual.s_ctx ectx.empty),
+      { refl },
+      { refl },
+      constructor,
+    },
+    {
+      apply (is_step_contextual.s_ctx ectx.empty),
+      { refl },
+      { refl },
+      constructor,
+    },
+    -- deal with non-trivial ectx's
+    {
+      destruct Hstep_ih,
+      intros E1 _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.plus_l E1 _)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+    },
+    {
+      destruct Hstep_ih,
+      intros E2 _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.plus_r Hstep_v1 E2 _)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+      assumption,
+    },
+    {
+      destruct Hstep_ih,
+      intros E1 _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.times_l E1 _)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+    },
+    {
+      destruct Hstep_ih,
+      intros E2 _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.times_r Hstep_v1 E2 _)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+      assumption,
+    },
+    {
+      destruct Hstep_ih,
+      intros E1 _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.cat_l E1 _)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+    },
+    {
+      destruct Hstep_ih,
+      intros E2 _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.cat_r Hstep_v1 E2 _)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+      assumption,
+    },
+    {
+      destruct Hstep_ih,
+      intros E _ _ Heq1 Heq2 Hinst,
+      apply (is_step_contextual.s_ctx (ectx.len E)),
+      { unfold instantiate_ectx, rw Heq1, },
+      { unfold instantiate_ectx, rw Heq2, },
+      assumption,
+    },
+  },
+  { -- other direction
+    intros Hstep,
+    destruct Hstep,
+    clear Hstep,
+    introv Heq1 Heq2 Hinstr,
+    revert e e',
+    induction E,
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      apply instr_implies_structural,
+      assumption,
+    },
+
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      apply E_ih; refl
+    },
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      { assumption },
+      apply E_ih; refl
+    },
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      apply E_ih; refl
+    },
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      { assumption },
+      apply E_ih; refl
+    },
+
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      apply E_ih; refl
+    },
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      { assumption },
+      apply E_ih; refl
+    },
+    {
+      introv Heq1 Heq2,
+      rw [Heq1, Heq2],
+      unfold instantiate_ectx,
+      constructor,
+      apply E_ih; refl
+    },
+  }
+end
+
 
 -- FIXME: notation needs to be surrounded by parens to work correctly
+notation Γ ` ⊢ `:90 e:90 ` : `:90 τ:90 := has_type Γ e τ
 
 theorem typing_unicity :
-∀ Γ e τa τb,
-has_type Γ e τa →
+∀ (Γ:context) e (τa τb:typ),
+Γ ⊢ e : τa →
 has_type Γ e τb →
 (τa = τb) :=
 begin
@@ -152,8 +381,8 @@ end
 theorem weakening' :
 ∀ (Γ Γ':context) e' τ',
 context_included Γ Γ' →
-has_type Γ e' τ' →
-has_type Γ' e' τ'
+Γ ⊢ e' : τ' →
+Γ' ⊢ e' : τ'
 :=
 begin
   introv,
