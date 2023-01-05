@@ -440,99 +440,70 @@ begin
   },
 end
 
-/--
-theorem weakening_bad :
-∀ (Γ:context) e' τ' x τ,
-Γ x = none →
-has_type Γ e' τ' →
-has_type (x ↦ τ ; Γ) e' τ'
-:=
+def empty_ctx : context := λ _, none
+
+lemma substitution_property :
+  ∀ Γ e τ x e' τ',
+  Γ ⊢ e : τ →
+  ((x ↦ τ; Γ) ⊢ e' : τ') →
+  Γ ⊢ (substitute x e e') : τ'
+  :=
 begin
-  introv,
-  intros Hfresh Hty,
-  revert x,
-  induction Hty,
-  -- pretty_cases,
-  case has_type.t_let : x e1 e2 Γ _ _ He1 He2 Hih1 Hih2 {
-    dedup,
-    intros xnew Hfresh,
-    specialize Hih1 _ Hfresh,
-    specialize Hih2 xnew,
-    { suffices : x ≠ x,
-      { unfold update_context,
-        rwa if_neg,
-        assumption,
-      },
-      sorry -- FIXME: want fresh name for x_1
+sorry
+end
+
+-- This does induction over the typign relation, and "inversion" (really cases)
+-- over step relation. This is not the best way to prove preservation.
+theorem type_preservation1 :
+  ∀ e τ e',
+  empty_ctx ⊢ e : τ →
+  (e ↦str e') → empty_ctx ⊢ e' : τ :=
+begin
+  introv Hty Hstep,
+  revert e',
+  induction Hty; try { by { introv Hstep, exfalso; cases Hstep }};
+  try {
+    introv Hstep,
+    cases Hstep,
+    { constructor },
+    { constructor,
+      { apply Hty_ih_ᾰ, assumption },
+      { assumption },
     },
-    apply has_type.t_let,
-    assumption,
-    suffices h : ((x_1 ↦ Hty_τ1 ; (x↦τ;Γ_1)) = (x↦τ;(x_1 ↦ Hty_τ1 ; Γ_1))),
-    { rwa h },
-    unfold update_context,
-    apply funext,
-    intros y,
-    by_cases (x_1 = y),
-    {
-      by_cases (x = y),
-      { sorry }, -- FIXME: want x_1 ≠ x
-      { simp * },
-    },
-    {
-      by_cases (x = y),
-      { simp * },
-      { simp * },
+    { constructor,
+      { assumption },
+      { apply Hty_ih_ᾰ_1, assumption },
     }
   },
   {
-    apply has_type.t_var,
-    unfold update_context,
-    by_cases (x = Hty_x),
+    introv Hstep,
+    cases Hstep,
+    { constructor },
+    { constructor,
+      apply Hty_ih,
+      assumption
+    }
+  },
+  {
+    introv Hstep,
+    cases Hstep,
     {
-      subst h,
-      exfalso,
-      rw Hfresh at Hty_ᾰ,
-      contradiction,
-   },
-   rw if_neg,
-   { assumption },
-   { assumption },
-  },
-  { apply has_type.t_lit_str },
-  { apply has_type.t_lit_num },
-  {
-    apply has_type.t_plus,
-    { apply Hty_ih_ᾰ, assumption },
-    { apply Hty_ih_ᾰ_1, assumption },
-  },
-  {
-    apply has_type.t_times,
-    { apply Hty_ih_ᾰ, assumption },
-    { apply Hty_ih_ᾰ_1, assumption },
-  },
-  {
-    apply has_type.t_cat,
-    { apply Hty_ih, assumption },
-  },
-  {
-    apply has_type.t_len,
-    { apply Hty_ih, assumption },
+      apply substitution_property,
+      { assumption },
+      { assumption },
+    }
   },
 end
--/
---  intros H1
---  revert τb
---  induction H1 with
---  | t_var => intro τb H2 ; cases H2; simp_all
---  | t_lit_str => intro τb H2 ; cases H2; simp_all
---  | t_lit_num => intro τb H2 ; cases H2; simp_all
---  | t_plus => intro τb H2 ; cases H2; simp_all
---  | t_times => intro τb H2 ; cases H2; simp_all
---  | t_cat => intro τb H2 ; cases H2; simp_all
---  | t_len => intro τb H2 ; cases H2; simp_all
---  | t_let _ _ H4 H5 =>
---  -- this is broken; not sure how to get the inductive hypothesis with names...
---    intro τb H2
---    cases H2 with
---    | t_let _ _ Hn Hm =>
---    simp_all
+
+
+theorem type_safety :
+  ∀ e τ,
+  empty_ctx ⊢ e : τ →
+ (∀ e', (e ↦str e') → empty_ctx ⊢ e' : τ) ∧
+ (is_val e ∨ ∃ e', e ↦str e') :=
+begin
+  introv Hty,
+  split,
+  { intros, apply type_preservation1; assumption },
+  { sorry, },
+end
