@@ -473,13 +473,13 @@ begin
     cases Hty,
     apply substitution_property; assumption
   },
-  {
+  repeat {
     intros τ e e' Hty Heq1 Heq2,
     subst Heq1, subst Heq2,
     unfold instantiate_ectx at *,
     cases Hty,
     constructor,
-    { apply (E_ih _ _) }
+    repeat { assumption <|> { apply E_ih; try {refl}, assumption } }
   },
 end
 
