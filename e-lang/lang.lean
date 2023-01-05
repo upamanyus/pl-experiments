@@ -28,8 +28,8 @@ def update_context (Γ:context) (x:string) (t:typ) : context :=
 notation x `↦` τ `;` Γ := update_context Γ x τ
 
 inductive has_type : context → exp → typ → Prop
-| t_var : ∀ (Γ:context) x t, (Γ x = some t) → has_type Γ (var x) t
-| t_lit_str: ∀ (s:string) Γ, has_type Γ (lit_str s) str
+| t_var (Γ:context) (x:string) (t:typ) : (Γ x = some t) → has_type Γ (var x) t
+| t_lit_str (s:string) (Γ:context) : has_type Γ (lit_str s) str
 | t_lit_num: ∀ (n:ℕ) Γ, has_type Γ (lit_num n) num
 | t_plus: ∀ (e1 e2:exp) Γ,  has_type Γ e1 num → has_type Γ e2 num →
                         has_type Γ (plus e1 e2) num
@@ -375,10 +375,65 @@ lemma substitution_property :
   Γ ⊢ (substitute x e e') : τ'
   :=
 begin
-sorry
+  introv Hty Hty',
+  -- XXX: doing this so the induction doesn't mess stuff up
+  generalize h : (x↦τ;Γ) = y,
+  rw h at *,
+  induction Hty',
+  {
+    subst h,
+    unfold substitute,
+    by_cases (x = Hty'_x),
+    {
+      subst h,
+      unfold update_context at *,
+      simp at *,
+      rw <- Hty'_ᾰ,
+      assumption
+    },
+    {
+      unfold update_context at *,
+      rw if_neg at *, tactic.swap,
+      { assumption },
+      { constructor, assumption },
+      { assumption },
+    },
+  },
+  repeat { constructor, done }, -- for literals
+  repeat {
+    subst h,
+    unfold substitute,
+    simp * at *,
+    constructor,
+    { apply Hty'_ih_ᾰ, trivial },
+    { apply Hty'_ih_ᾰ_1, trivial },
+  },
+  {
+    subst h,
+    unfold substitute,
+    simp * at *,
+    constructor,
+    { apply Hty'_ih, trivial },
+  },
+  {
+    subst h,
+    unfold substitute,
+    simp * at *,
+    by_cases (x = Hty'_x),
+    {
+      simp *,
+      sorry,
+    },
+    {
+      simp *,
+      constructor,
+      { apply Hty'_ih_He1, trivial },
+      { sorry }
+    },
+  }
 end
 
--- This does induction over the typign relation, and "inversion" (really cases)
+-- This does induction over the typing relation, and "inversion" (really cases)
 -- over step relation. This is not the best way to prove preservation.
 theorem type_preservation1 :
   ∀ e τ e',
