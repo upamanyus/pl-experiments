@@ -131,35 +131,8 @@ begin
   { -- str → ctx
     intros Hstep,
     induction Hstep,
-    {
-      apply (is_step_contextual.s_ctx ectx.empty),
-      { refl },
-      { refl },
-      constructor, assumption,
-    },
-    {
-      apply (is_step_contextual.s_ctx ectx.empty),
-      { refl },
-      { refl },
-      constructor, assumption,
-    },
-    {
-      apply (is_step_contextual.s_ctx ectx.empty),
-      { refl },
-      { refl },
-      constructor, assumption,
-    },
-    {
-      apply (is_step_contextual.s_ctx ectx.empty),
-      { refl },
-      { refl },
-      constructor,
-    },
-    {
-      apply (is_step_contextual.s_ctx ectx.empty),
-      { refl },
-      { refl },
-      constructor,
+    repeat {
+      apply (is_step_contextual.s_ctx ectx.empty); { constructor, try {assumption} }
     },
     -- deal with non-trivial ectx's
     {
@@ -236,58 +209,11 @@ begin
       apply instr_implies_structural,
       assumption,
     },
-
-    {
+    repeat {
       introv Heq1 Heq2,
       rw [Heq1, Heq2],
       unfold instantiate_ectx,
-      constructor,
-      apply E_ih; refl
-    },
-    {
-      introv Heq1 Heq2,
-      rw [Heq1, Heq2],
-      unfold instantiate_ectx,
-      constructor,
-      { assumption },
-      apply E_ih; refl
-    },
-    {
-      introv Heq1 Heq2,
-      rw [Heq1, Heq2],
-      unfold instantiate_ectx,
-      constructor,
-      apply E_ih; refl
-    },
-    {
-      introv Heq1 Heq2,
-      rw [Heq1, Heq2],
-      unfold instantiate_ectx,
-      constructor,
-      { assumption },
-      apply E_ih; refl
-    },
-
-    {
-      introv Heq1 Heq2,
-      rw [Heq1, Heq2],
-      unfold instantiate_ectx,
-      constructor,
-      apply E_ih; refl
-    },
-    {
-      introv Heq1 Heq2,
-      rw [Heq1, Heq2],
-      unfold instantiate_ectx,
-      constructor,
-      { assumption },
-      apply E_ih; refl
-    },
-    {
-      introv Heq1 Heq2,
-      rw [Heq1, Heq2],
-      unfold instantiate_ectx,
-      constructor,
+      constructor, try { assumption },
       apply E_ih; refl
     },
   }
@@ -521,6 +447,39 @@ begin
   repeat {
     introv Hty, cases Hty,
     constructor; assumption <|> {apply Hstep_ih, assumption }
+  },
+end
+
+-- This version uses contextual dynamics.
+theorem type_preservation3 :
+  ∀ e τ e',
+  empty_ctx ⊢ e : τ →
+  (e ↦ctx e') →
+  empty_ctx ⊢ e' : τ :=
+begin
+  introv Hty Hstep,
+  destruct Hstep,
+  clear Hstep,
+  introv Heq1 Heq2 Hstep,
+  revert τ e e',
+  induction E,
+  {
+    intros τ e e' Hty Heq1 Heq2,
+    subst Heq1,
+    subst Heq2,
+    unfold instantiate_ectx at *,
+    cases Hstep,
+    repeat { cases Hty, constructor },
+    cases Hty,
+    apply substitution_property; assumption
+  },
+  {
+    intros τ e e' Hty Heq1 Heq2,
+    subst Heq1, subst Heq2,
+    unfold instantiate_ectx at *,
+    cases Hty,
+    constructor,
+    { apply (E_ih _ _) }
   },
 end
 
