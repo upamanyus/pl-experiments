@@ -61,7 +61,7 @@ inductive is_step : exp → exp → Prop
 | s_times : ∀ (n1 n2 n:ℕ), n = n1 * n2 → is_step (times (lit_num n1) (lit_num n2)) (lit_num n)
 | s_cat : ∀ (s1 s2 s:string), s = s1 ++ s2 → is_step (cat (lit_str s1) (lit_str s2)) (lit_str s)
 | s_len : ∀ s, is_step (len (lit_str s)) (lit_num (string.length s))
-| s_let : ∀ x e1 e2, is_step (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-value
+| s_let : ∀ x e1 e2, is_step (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-name
 -- the rest of these are the "search" transitions
 | s_plus_l : ∀ e1 e2 e1', is_step e1 e1' → is_step (plus e1 e2) (plus e1' e2)
 | s_plus_r : ∀ v1 e2 e2', is_val v1 → is_step e2 e2' → is_step (plus v1 e2) (plus v1 e2')
@@ -101,7 +101,7 @@ inductive is_step_instr : exp → exp → Prop
 | s_times : ∀ (n1 n2 n:ℕ), n = n1 * n2 → is_step_instr (times (lit_num n1) (lit_num n2)) (lit_num n)
 | s_cat : ∀ (s1 s2 s:string), s = s1 ++ s2 → is_step_instr (cat (lit_str s1) (lit_str s2)) (lit_str s)
 | s_len : ∀ s, is_step_instr (len (lit_str s)) (lit_num (string.length s))
-| s_let : ∀ x e1 e2, is_step_instr (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-value
+| s_let : ∀ x e1 e2, is_step_instr (elet x e1 e2) (substitute x e1 e2) -- NOTE: this is call by-name
 
 inductive is_step_contextual (e e':exp) : Prop
 | s_ctx : ∀ E e0 e0', e = E{e0} → e' = E{e0'} → is_step_instr e0 e0' → is_step_contextual
@@ -538,15 +538,19 @@ begin
   },
 end
 
+def canonical_form : typ → exp → Prop
+| num e := ∃ n, e = lit_num n
+| str e := ∃ s, e = lit_str s
+.
+
 lemma canonical_forms :
   ∀ e τ,
   empty_ctx ⊢ e : τ →
   is_val e →
-  (τ = num → ∃ n, e = lit_num n) ∧
-  (τ = str → ∃ s, e = lit_str s) :=
+  canonical_form τ e :=
 begin
 introv Hty Hval,
-split,
+destruct τ,
 repeat {
   introv Hre, subst Hre,
   cases Hval; cases Hty,
@@ -566,7 +570,7 @@ begin
   { exfalso, unfold empty_ctx at *, contradiction },
   { left, constructor },
   { left, constructor },
-  { simp at *,
+  repeat { simp at *,
     right,
     specialize Hty_ih_ᾰ _, trivial,
     specialize Hty_ih_ᾰ_1 _, trivial,
@@ -574,12 +578,11 @@ begin
     { -- case: e1 can't take a step
       cases Hty_ih_ᾰ_1,
       {
-        have Hnum1 : _ := (canonical_forms _ _ Hty_ᾰ Hty_ih_ᾰ).1 _,
-        tactic.swap, trivial,
+        have Hnum1 : _ := (canonical_forms _ _ Hty_ᾰ Hty_ih_ᾰ),
+        unfold canonical_form at Hnum1,
         cases Hnum1 with n1,
         subst Hnum1_h,
-        have Hnum2 : _ := (canonical_forms _ _ Hty_ᾰ_1 Hty_ih_ᾰ_1).1 _,
-        tactic.swap, trivial,
+        have Hnum2 : _ := (canonical_forms _ _ Hty_ᾰ_1 Hty_ih_ᾰ_1),
         cases Hnum2 with n2,
         subst Hnum2_h,
         constructor,
@@ -588,16 +591,45 @@ begin
       { -- case: e2 can take a step
         cases Hty_ih_ᾰ_1,
         existsi _,
-        { apply is_step.s_plus_r; assumption }
+        { apply is_step.s_plus_r <|>
+          apply is_step.s_times_r <|>
+          apply is_step.s_cat_r,
+          repeat {assumption}
+        }
       }
     },
     { -- case: e1 can take a step
       cases Hty_ih_ᾰ,
       existsi _,
-      { apply is_step.s_plus_l; assumption }
+      { apply is_step.s_plus_l <|>
+        apply is_step.s_times_l <|>
+        apply is_step.s_cat_l, assumption }
     }
   },
-  repeat { sorry }
+  {
+    right,
+    specialize Hty_ih _, trivial,
+    cases Hty_ih,
+    { -- go from len("literal") to 7
+      have Hstr1: _ := (canonical_forms _ _ Hty_ᾰ Hty_ih),
+      unfold canonical_form at Hstr1,
+      cases Hstr1 with s,
+      subst Hstr1_h,
+      existsi _,
+      apply is_step.s_len,
+    },
+    { -- take a step inside the `len`
+      cases Hty_ih with e',
+      existsi _,
+      apply is_step.s_len_i,
+      assumption,
+    }
+  },
+  { -- let binding...
+    right,
+    existsi _,
+    apply is_step.s_let,
+  },
 end
 
 theorem type_safety :
