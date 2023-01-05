@@ -538,6 +538,68 @@ begin
   },
 end
 
+lemma canonical_forms :
+  ∀ e τ,
+  empty_ctx ⊢ e : τ →
+  is_val e →
+  (τ = num → ∃ n, e = lit_num n) ∧
+  (τ = str → ∃ s, e = lit_str s) :=
+begin
+introv Hty Hval,
+split,
+repeat {
+  introv Hre, subst Hre,
+  cases Hval; cases Hty,
+  existsi _, refl
+}
+end
+
+lemma progress :
+  ∀ e τ,
+  empty_ctx ⊢ e : τ →
+  is_val e ∨ (∃ e', e ↦str e') :=
+begin
+  introv Hty,
+  generalize h : empty_ctx = y,
+  rw h at *,
+  induction Hty with Γ; subst h,
+  { exfalso, unfold empty_ctx at *, contradiction },
+  { left, constructor },
+  { left, constructor },
+  { simp at *,
+    right,
+    specialize Hty_ih_ᾰ _, trivial,
+    specialize Hty_ih_ᾰ_1 _, trivial,
+    cases Hty_ih_ᾰ,
+    { -- case: e1 can't take a step
+      cases Hty_ih_ᾰ_1,
+      {
+        have Hnum1 : _ := (canonical_forms _ _ Hty_ᾰ Hty_ih_ᾰ).1 _,
+        tactic.swap, trivial,
+        cases Hnum1 with n1,
+        subst Hnum1_h,
+        have Hnum2 : _ := (canonical_forms _ _ Hty_ᾰ_1 Hty_ih_ᾰ_1).1 _,
+        tactic.swap, trivial,
+        cases Hnum2 with n2,
+        subst Hnum2_h,
+        constructor,
+        { constructor, refl }
+      },
+      { -- case: e2 can take a step
+        cases Hty_ih_ᾰ_1,
+        existsi _,
+        { apply is_step.s_plus_r; assumption }
+      }
+    },
+    { -- case: e1 can take a step
+      cases Hty_ih_ᾰ,
+      existsi _,
+      { apply is_step.s_plus_l; assumption }
+    }
+  },
+  repeat { sorry }
+end
+
 theorem type_safety :
   ∀ e τ,
   empty_ctx ⊢ e : τ →
@@ -547,5 +609,5 @@ begin
   introv Hty,
   split,
   { intros, apply type_preservation1; assumption },
-  { sorry, },
+  { apply progress, assumption },
 end
