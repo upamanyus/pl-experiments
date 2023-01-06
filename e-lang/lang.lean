@@ -368,6 +368,25 @@ end
 
 def empty_ctx : context := λ _, none
 
+-- FIXME: This lemma is false.
+-- Counterexample:
+-- x:str ⊢ let x := len(x) in (x + x) : num
+-- ⊢ let x := len(x) in (x + x) : num
+--
+-- Let's use this to get a counterexample to type-safety:
+-- let x := "some string" in
+--   let x := len(x) in (x + x)
+--
+-- This type-checks to type num. But, the dynamics will get stuck after
+-- substituting the first let, because the substitution won't do anything
+-- because x "shadows" the other x.
+--
+-- Here's how to fix it TODO:
+-- The type system should be aware of how shadowing works. So,
+-- let x := e1 in (let x := (e1') in e2') should actually evaluate to
+-- (let x := [x/e1]e1' in e2'). The substitution should happen on the argument,
+-- but not on the "body" of the "let"
+
 lemma substitution_property :
   ∀ Γ e τ x e' τ',
   Γ ⊢ e : τ →
@@ -379,7 +398,7 @@ begin
   -- XXX: doing this so the induction doesn't mess stuff up
   generalize h : (x↦τ;Γ) = y,
   rw h at *,
-  induction Hty',
+  induction Hty' generalizing Γ,
   {
     subst h,
     unfold substitute,
@@ -411,24 +430,40 @@ begin
   {
     subst h,
     unfold substitute,
-    simp * at *,
     constructor,
-    { apply Hty'_ih, trivial },
+    { apply Hty'_ih_ᾰ,  assumption, trivial },
+    { apply Hty'_ih_ᾰ_1, assumption, trivial },
   },
+  sorry, sorry, sorry,
   {
     subst h,
     unfold substitute,
-    simp * at *,
+
+    specialize (Hty'_ih_He1 _ _ _),
+    tactic.rotate_right 2,
+    { refl },
+    tactic.swap,
+    { assumption },
+
+    specialize (Hty'_ih_He2 _ _ _),
+    tactic.rotate_right 3,
+    { apply weakening' _ (Hty'_x↦Hty'_τ1;Γ),
+      { sorry },
+      { assumption },
+    },
+    { sorry }, -- same in either case x = Hty'_x or not
+
     by_cases (x = Hty'_x),
-    {
+    { -- FIXME: problematic case
       simp *,
-      sorry,
+      -- in this case, we can prove that τ = Hty'_τ1
+      constructor; sorry
     },
     {
       simp *,
       constructor,
-      { apply Hty'_ih_He1, trivial },
-      { sorry }
+      { assumption },
+      { assumption },
     },
   }
 end
@@ -625,7 +660,7 @@ begin
       assumption,
     }
   },
-  { -- let binding...
+  { -- let binding
     right,
     existsi _,
     apply is_step.s_let,
