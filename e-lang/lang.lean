@@ -48,7 +48,7 @@ def substitute (x':string) (e':exp) : exp → exp
 | (times e1 e2) := times (substitute e1) (substitute e2)
 | (cat e1 e2) := cat (substitute e1) (substitute e2)
 | (len e1) := len (substitute e1)
-| (elet y e1 e2) := if (x' = y) then elet y e1 e2 else elet y (substitute e1) (substitute e2)
+| (elet y e1 e2) := if (x' = y) then elet y (substitute e1) e2 else elet y (substitute e1) (substitute e2)
 
 -- Dynamics
 inductive is_val : exp → Prop
@@ -422,19 +422,16 @@ begin
   repeat {
     subst h,
     unfold substitute,
-    simp * at *,
     constructor,
-    { apply Hty'_ih_ᾰ, trivial },
-    { apply Hty'_ih_ᾰ_1, trivial },
+    { apply Hty'_ih_ᾰ,  assumption, trivial },
+    { apply Hty'_ih_ᾰ_1, assumption, trivial },
   },
   {
     subst h,
     unfold substitute,
     constructor,
-    { apply Hty'_ih_ᾰ,  assumption, trivial },
-    { apply Hty'_ih_ᾰ_1, assumption, trivial },
+    { apply Hty'_ih,  assumption, trivial },
   },
-  sorry, sorry, sorry,
   {
     subst h,
     unfold substitute,
@@ -445,22 +442,57 @@ begin
     tactic.swap,
     { assumption },
 
-    specialize (Hty'_ih_He2 _ _ _),
-    tactic.rotate_right 3,
-    { apply weakening' _ (Hty'_x↦Hty'_τ1;Γ),
-      { sorry },
-      { assumption },
-    },
-    { sorry }, -- same in either case x = Hty'_x or not
-
-    by_cases (x = Hty'_x),
-    { -- FIXME: problematic case
+    by_cases (Hty'_x = x),
+    { -- XXX: this is where let variable shadowing matters
+      subst Hty'_x,
       simp *,
       -- in this case, we can prove that τ = Hty'_τ1
-      constructor; sorry
+      constructor,
+      { assumption },
+      {
+        have heq : (x↦Hty'_τ1;(x↦τ;Γ)) = (x↦Hty'_τ1 ; Γ),
+        {
+          apply funext,
+          intros,
+          unfold update_context,
+          by_cases (x = x_1),
+          { simp *, },
+          { repeat { rw if_neg h }, }
+        },
+        rw <- heq,
+        assumption
+      }
     },
     {
-      simp *,
+      specialize (Hty'_ih_He2 _ _ _),
+      tactic.rotate_right 3,
+      { apply weakening' _ (Hty'_x↦Hty'_τ1;Γ),
+        tactic.swap,
+        { assumption },
+        {
+          intros x y Hsome,
+          unfold update_context,
+          dedup,
+          by_cases (Hty'_x = x_1),
+          { simp *, sorry },
+          sorry,
+        },
+      },
+      {
+        apply funext,
+        intros,
+        unfold update_context,
+        by_cases Hx : (x = x_1),
+        {
+          simp *,
+          rw <- Hx,
+          rw if_neg,
+          assumption
+        },
+        { repeat { rw (if_neg Hx) } },
+      },
+      rw if_neg, tactic.swap,
+      { dedup, sorry, },
       constructor,
       { assumption },
       { assumption },
