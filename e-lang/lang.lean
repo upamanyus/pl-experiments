@@ -387,6 +387,56 @@ def empty_ctx : context := λ _, none
 -- (let x := [x/e1]e1' in e2'). The substitution should happen on the argument,
 -- but not on the "body" of the "let"
 
+-- FIXME: Another bug:
+-- The proof wants to make use of the (false) fact that Γ ⊢ e:τ →
+-- y↦τ';Γ ⊢ e:τ. Counterexample
+--  (y:string) ⊢ len(y) : num
+--  ¬((y:num) (y:string) ⊢ len(y) : num)
+--
+-- let y := e in e2
+--
+-- let x := len(y) in (x + x)
+--
+-- Γ ⊢ x : τ
+-- (x↦τ; Γ) ⊢ let y:=
+--
+-- (partial) proof context
+-- Hty'_ih_He2 :
+--   ∀ (Γ_1 : context),
+--     Γ_1 ⊢ e : τ → (x↦τ;Γ_1) = (Hty'_x↦Hty'_τ1;(x↦τ;Γ)) → Γ_1 ⊢ substitute x e Hty'_e2 : Hty'_τ2,
+-- Hty'_ih_He1 : Γ ⊢ substitute x e Hty'_e1 : Hty'_τ1,
+-- h : ¬Hty'_x = x
+-- ⊢ Γ ⊢ elet Hty'_x (substitute x e Hty'_e1) (substitute x e Hty'_e2) : Hty'_τ2
+--
+-- Given:
+-- Γ ⊢ ex : τ
+-- (x↦τ;Γ) ⊢ let (y := ey) in e2
+-- WTS:
+-- (y↦τy;Γ) ⊢ ex : τ, which will help prove
+-- Γ ⊢ let (y := [x/ex]ey) in [x/ex]e2
+--
+-- Example with Γ ⊢ ex:τ but ¬((y↦τy;Γ) ⊢ ex:τ):
+-- Γ=(y:string), τ=num, τy=num, ex=len(y)
+-- Γ ⊢ len(y)
+--
+-- Γ ⊢ len(y):num
+-- (x:num);Γ ⊢ let (y := 10) in (y + x)
+-- WTS: Γ ⊢ subst x (len(y))  let (y:=10) in (y + x)
+--    ↔ Γ ⊢ let y:=10 in y + len(y)
+--
+-- This is what we might hope corresponds to the counterexample:
+-- let y:="blah" in
+--  let x:=len(y) in
+--   (let y:=10 in (y + x))
+--
+-- But, when y:=blah if first substituted, and by the time we're looking at
+-- (let x:=len("blah") in ...) there's no problem redefining y to a different type.
+-- This would only be problematic if we allowed the substitution (x:=len(y)) to
+-- happen before the outer substitution (y:="blah"). But because that can't
+-- happen, we can conclude that for type safety, we only care about substituting
+-- CLOSED terms, so can weaken this lemma to Γ = empty_ctx. TODO
+
+
 lemma substitution_property :
   ∀ Γ e τ x e' τ',
   Γ ⊢ e : τ →
