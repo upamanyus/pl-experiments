@@ -434,12 +434,12 @@ def empty_ctx : context := λ _, none
 -- This would only be problematic if we allowed the substitution (x:=len(y)) to
 -- happen before the outer substitution (y:="blah"). But because that can't
 -- happen, we can conclude that for type safety, we only care about substituting
--- CLOSED terms, so can weaken this lemma to Γ = empty_ctx. TODO
-
+-- CLOSED terms, so can weaken this lemma to the case where e' is typed with
+-- empty_ctx. TODO
 
 lemma substitution_property :
   ∀ Γ e τ x e' τ',
-  Γ ⊢ e : τ →
+  empty_ctx ⊢ e : τ →
   ((x ↦ τ; Γ) ⊢ e' : τ') →
   Γ ⊢ (substitute x e e') : τ'
   :=
@@ -458,7 +458,11 @@ begin
       unfold update_context at *,
       simp at *,
       rw <- Hty'_ᾰ,
-      assumption
+      apply weakening',
+      tactic.swap, assumption,
+      intros x y He, exfalso,
+      unfold empty_ctx at *,
+      contradiction,
     },
     {
       unfold update_context at *,
@@ -473,24 +477,23 @@ begin
     subst h,
     unfold substitute,
     constructor,
-    { apply Hty'_ih_ᾰ,  assumption, trivial },
-    { apply Hty'_ih_ᾰ_1, assumption, trivial },
+    { apply Hty'_ih_ᾰ, trivial, },
+    { apply Hty'_ih_ᾰ_1, trivial, },
   },
   {
     subst h,
     unfold substitute,
-    constructor,
-    { apply Hty'_ih,  assumption, trivial },
+    apply has_type.t_len,
+    apply Hty'_ih,
+    trivial,
   },
   {
     subst h,
     unfold substitute,
 
-    specialize (Hty'_ih_He1 _ _ _),
+    specialize (Hty'_ih_He1 _ _),
     tactic.rotate_right 2,
     { refl },
-    tactic.swap,
-    { assumption },
 
     by_cases (Hty'_x = x),
     { -- XXX: this is where let variable shadowing matters
@@ -498,9 +501,9 @@ begin
       simp *,
       -- in this case, we can prove that τ = Hty'_τ1
       constructor,
-      { assumption },
+      { apply Hty'_ih_He1 },
       {
-        have heq : (x↦Hty'_τ1;(x↦τ;Γ)) = (x↦Hty'_τ1 ; Γ),
+        have heq : ((x↦Hty'_τ1;(x↦τ;Γ)) = (x↦Hty'_τ1 ; Γ)),
         {
           apply funext,
           intros,
@@ -514,20 +517,8 @@ begin
       }
     },
     {
-      specialize (Hty'_ih_He2 _ _ _),
-      tactic.rotate_right 3,
-      { apply weakening' _ (Hty'_x↦Hty'_τ1;Γ),
-        tactic.swap,
-        { assumption },
-        {
-          intros x y Hsome,
-          unfold update_context,
-          dedup,
-          by_cases (Hty'_x = x_1),
-          { simp *, sorry },
-          sorry,
-        },
-      },
+      specialize (Hty'_ih_He2 (Hty'_x↦Hty'_τ1;Γ) _),
+      tactic.rotate_right 2,
       {
         apply funext,
         intros,
@@ -542,7 +533,8 @@ begin
         { repeat { rw (if_neg Hx) } },
       },
       rw if_neg, tactic.swap,
-      { dedup, sorry, },
+      { by_cases (x = Hty'_x), rw h at *, contradiction,
+        assumption },
       constructor,
       { assumption },
       { assumption },
@@ -560,30 +552,36 @@ theorem type_preservation1 :
 begin
   introv Hty Hstep,
   revert e',
+  generalize h : empty_ctx = Γ,
+  rw h at *,
   induction Hty; try { by { introv Hstep, exfalso; cases Hstep }};
   try {
+    subst h,
     introv Hstep,
     cases Hstep,
     { constructor },
     { constructor,
-      { apply Hty_ih_ᾰ, assumption },
+      { apply Hty_ih_ᾰ, refl, assumption },
       { assumption },
     },
     { constructor,
       { assumption },
-      { apply Hty_ih_ᾰ_1, assumption },
+      { apply Hty_ih_ᾰ_1, refl, assumption },
     }
   },
   {
+    subst h,
     introv Hstep,
     cases Hstep,
     { constructor },
     { constructor,
       apply Hty_ih,
+      refl,
       assumption
     }
   },
   {
+    subst h,
     introv Hstep,
     cases Hstep,
     {
