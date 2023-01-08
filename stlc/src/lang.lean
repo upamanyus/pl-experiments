@@ -191,8 +191,23 @@ end
 
 -- FIXME: this lemma is false. If γ has an instantiation for x in it, then this
 -- is wrong.
-lemma env_sub_lam :
-∀ γ x τ e, (env_sub γ (lam x τ e)) = lam x τ (env_sub γ e) :=
+lemma env_sub_lam_val :
+∀ γ x τ e, is_val (env_sub γ (lam x τ e)) :=
+begin
+  intros,
+  induction γ generalizing e,
+  { unfold env_sub, constructor },
+  cases γ_hd, unfold env_sub,
+  unfold substitute,
+  by_cases (γ_hd_fst = x),
+  { simp * },
+  rw if_neg, tactic.swap, trivial,
+  apply γ_ih,
+end
+
+lemma env_sub_lam_step :
+∀ γ x τ1 e e',
+(env_sub γ (lam x τ1 e)).ap e' ↦str (env_sub γ (substitute x e' e)) :=
 begin sorry end
 
 lemma env_sub_sn :
@@ -209,7 +224,18 @@ begin
   induction h generalizing γ; subst h,
   { apply env_sub_unit },
   { exfalso, unfold empty_ctx context_lookup at h_Hvar, contradiction },
-  { rw env_sub_lam, sorry }, -- FIXME: the lemma env_sub_lam is false, and makes this unprovable
+  {
+    induction γ generalizing h_ih,
+    { unfold env_sub },
+    cases γ_hd,
+    unfold env_sub,
+    unfold substitute,
+    by_cases (γ_hd_fst = h_x),
+    { simp *, sorry },
+    { rw if_neg, tactic.swap, trivial,
+      sorry,
+    }
+  },
   { rw env_sub_ap,
     rw h_ih_Hfunc,
     rw h_ih_Hargs,
@@ -295,8 +321,7 @@ begin
       unfold evals_to,
       split,
       apply is_many_step.many_steps_reflexive,
-      rw env_sub_lam,
-      constructor,
+      apply env_sub_lam_val,
     },
     -- property 3
     intros e' Hsn,
@@ -314,20 +339,13 @@ begin
       cases τ1; apply Hsn.1, -- this could be a separate lemma
     },
     {
-      rw env_sub_lam,
-      -- FIXME: this is where the proof goes wrong and the env_sub and
-      -- substitute end up in the wrong order. The lemma env_sub_lam is false.
-      constructor,
+      apply env_sub_lam_step,
     },
     -- XXX: here, our proof diverges from the notes because we are doing
     -- call-by-name but the notes are doing call-by-value
 
-    have h: (env_sub ((x,e')::γ) e) = (substitute x e' (env_sub γ e)),
-    {
-      unfold env_sub,
-
-      sorry, -- FIXME: the notes say this, but not clear if/why it's true. Maybe env_sub is defined incorrectly?
-    },
+    have h: (env_sub ((x,e')::γ) e) = (env_sub γ (substitute x e' e)),
+    { unfold env_sub },
     rw <- h,
     apply Hty_ih,
     unfold update_context,
