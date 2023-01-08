@@ -210,6 +210,45 @@ lemma env_sub_lam_step :
 (env_sub γ (lam x τ1 e)).ap e' ↦str (env_sub γ (substitute x e' e)) :=
 begin sorry end
 
+lemma sub_lam_ne :
+∀ (Γ:context) y ey τ2 e,
+(list.all₂ (λ (x:string×typ), y ≠ x.fst) Γ) →
+Γ ⊢ e : τ2 →
+(substitute y ey e) = e :=
+begin
+  introv Hne Hty,
+  induction Hty,
+  { unfold substitute },
+  { unfold substitute, rw if_neg,
+    induction Hty_Γ,
+    { unfold context_lookup at *, contradiction },
+    cases Hty_Γ_hd,
+    simp at Hne,
+    unfold context_lookup at Hty_Hvar,
+    by_cases (Hty_x = Hty_Γ_hd_fst),
+    { subst h, tauto },
+    rw if_neg at Hty_Hvar, tactic.swap, trivial,
+    apply Hty_Γ_ih,
+    assumption, tauto
+  },
+  {
+    unfold substitute,
+    by_cases (y = Hty_x),
+    { simp * },
+    { rw if_neg, tactic.swap, trivial,
+      rw Hty_ih,
+      { unfold update_context,
+        simp * }
+    }
+  },
+  {
+    unfold substitute,
+    rw Hty_ih_Hfunc,
+    rw Hty_ih_Hargs,
+    repeat { assumption }
+  },
+end
+
 lemma env_sub_sn :
 ∀ γ v τ, SN τ v → env_sub γ v = v :=
 begin
@@ -225,15 +264,18 @@ begin
   { apply env_sub_unit },
   { exfalso, unfold empty_ctx context_lookup at h_Hvar, contradiction },
   {
-    induction γ generalizing h_ih,
+    induction γ,
     { unfold env_sub },
     cases γ_hd,
     unfold env_sub,
     unfold substitute,
     by_cases (γ_hd_fst = h_x),
-    { simp *, sorry },
+    { simp * },
     { rw if_neg, tactic.swap, trivial,
-      sorry,
+      rw sub_lam_ne,
+      { apply γ_ih },
+      tactic.swap, assumption,
+      { unfold update_context, simp * },
     }
   },
   { rw env_sub_ap,
