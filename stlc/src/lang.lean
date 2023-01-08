@@ -124,12 +124,63 @@ def is_env_ctx : env → context → Prop
 | ((x,v)::γ) ((y,τ)::Γ) := x=y ∧ is_env_ctx γ Γ ∧ SN τ v
 | _ _ := false
 
+lemma weakening :
+  ∀ Γ e τ,
+  empty_ctx ⊢ e : τ →
+  Γ ⊢ e : τ :=
+begin
+sorry
+end
+
+
 lemma sub_property :
 ∀ x τx v Γ e τ,
 empty_ctx ⊢ v : τx →
 (x ↦ τx; Γ) ⊢ e : τ →
 Γ ⊢ substitute x v e : τ :=
-begin sorry end
+begin
+  introv Hty Hty,
+  generalize h : (x↦τx;Γ) = Γ',
+  rw h at *,
+  induction Hty generalizing Γ; subst h,
+  { unfold substitute, constructor },
+  { unfold substitute,
+    unfold update_context context_lookup at Hty_Hvar,
+    by_cases (x = Hty_x),
+    {
+      simp *,
+      simp * at Hty_Hvar,
+      injection Hty_Hvar,
+      subst h_1,
+      apply weakening,
+      assumption
+    },
+    {
+      rw if_neg at *;
+      try { tauto },
+      constructor,
+      assumption
+    }
+  },
+  { -- case: lam
+    unfold substitute,
+    unfold update_context context_lookup at *,
+    by_cases (x = Hty_x),
+    {
+      simp *,
+      constructor,
+      subst h,
+      sorry, -- TODO: lemma about shadowed variable
+    },
+    {
+      rw if_neg, tactic.swap, trivial,
+      constructor,
+      apply Hty_ih,
+      sorry, -- FIXME: with the list defn of Γ, it's not clear that reordering
+      -- elements of Γ for different vars preserves typing.
+    },
+  }
+end
 
 lemma substitution_property :
   ∀ γ Γ e τ ,
