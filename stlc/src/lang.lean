@@ -31,7 +31,7 @@ inductive has_type : context → exp → typ → Prop
 | unit (Γ:context) : has_type Γ unit unitT
 | var (Γ:context) (x:string) (τ:typ) (Hvar:context_lookup Γ x = some τ) : has_type Γ (var x) τ
 | lam (Γ:context) (x:string) (τ1 τ2:typ) (e:exp) (Habs:has_type (x↦τ1 ; Γ) e τ2) : has_type Γ (lam x τ1 e) (arrowT τ1 τ2)
-| ap  (Γ:context) (f a:exp) (τ1 τ2:typ) (Hfunc:has_type Γ f (arrowT τ1 τ2)) : has_type Γ (ap f a) τ2
+| ap  (Γ:context) (f a:exp) (τ1 τ2:typ) (Hfunc:has_type Γ f (arrowT τ1 τ2)) (Hargs:has_type Γ a τ1): has_type Γ (ap f a) τ2
 
 def substitute (x':string) (e':exp) : exp → exp
 | unit := unit
@@ -145,6 +145,10 @@ lemma env_sub_val :
 ∀ γ v, is_val v → env_sub γ v = v :=
 begin sorry end
 
+lemma env_sub_ap :
+∀ γ f a, (env_sub γ (ap f a)) = (ap (env_sub γ f) (env_sub γ a)) :=
+begin sorry end
+
 theorem sn_general :
   ∀ Γ γ e τ,
   Γ ⊢ e : τ →
@@ -204,5 +208,12 @@ begin
   {
   sorry,
   },
-  { sorry}
+  {
+    specialize Hty_ih_Hfunc Henv,
+    specialize Hty_ih_Hargs Henv,
+    unfold SN at Hty_ih_Hfunc,
+    rw env_sub_ap,
+    apply Hty_ih_Hfunc.2,
+    apply Hty_ih_Hargs
+  }
 end
