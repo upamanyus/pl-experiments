@@ -124,13 +124,39 @@ def is_env_ctx : env → context → Prop
 | ((x,v)::γ) ((y,τ)::Γ) := x=y ∧ is_env_ctx γ Γ ∧ SN τ v
 | _ _ := false
 
+lemma sub_property :
+∀ x τx v Γ e τ,
+(x ↦ τx; Γ) ⊢ e : τ →
+Γ ⊢ substitute x v e : τ :=
+begin sorry end
+
 lemma substitution_property :
   ∀ γ Γ e τ ,
   is_env_ctx γ Γ →
   Γ ⊢ e : τ →
   empty_ctx ⊢ env_sub γ e : τ
   :=
-begin sorry end
+begin
+  introv Henv Hty,
+  induction γ generalizing Γ e,
+  {
+    induction Γ,
+    { unfold env_sub, unfold empty_ctx, assumption },
+    { exfalso, unfold is_env_ctx at Henv, trivial },
+  },
+  induction Γ,
+  { exfalso, cases γ_hd, unfold is_env_ctx at Henv, trivial },
+  cases γ_hd with x v,
+  unfold env_sub,
+  cases Γ_hd,
+  unfold is_env_ctx at Henv,
+  apply (γ_ih Γ_tl),
+  { apply Henv.2.1 },
+  cases Henv with Hre Henv,
+  subst Hre,
+  apply sub_property,
+  { exact Hty, }
+end
 
 lemma sn_preservation :
   ∀ e e' τ,
@@ -142,19 +168,51 @@ begin sorry end
 
 lemma env_sub_unit :
 ∀ γ, env_sub γ unit = unit :=
+begin
+ intros,
+ induction γ,
+ { unfold env_sub, },
+ { cases γ_hd, unfold env_sub, unfold substitute, assumption },
+end
+
+lemma env_sub_ap :
+∀ γ f a, (env_sub γ (ap f a)) = (ap (env_sub γ f) (env_sub γ a)) :=
+begin
+  intros,
+  induction γ generalizing f a,
+  { unfold env_sub, },
+  cases γ_hd,
+  unfold env_sub,
+  apply γ_ih,
+end
+
+-- FIXME: this lemma is false. If γ has an instantiation for x in it, then this
+-- is wrong.
+lemma env_sub_lam :
+∀ γ x τ e, (env_sub γ (lam x τ e)) = lam x τ (env_sub γ e) :=
 begin sorry end
 
 lemma env_sub_sn :
 ∀ γ v τ, SN τ v → env_sub γ v = v :=
-begin sorry end
-
-lemma env_sub_ap :
-∀ γ f a, (env_sub γ (ap f a)) = (ap (env_sub γ f) (env_sub γ a)) :=
-begin sorry end
-
-lemma env_sub_lam :
-∀ γ x τ e, (env_sub γ (lam x τ e)) = lam x τ (env_sub γ e) :=
-begin sorry end
+begin
+  introv Hsn,
+  have h : (empty_ctx ⊢ v : τ),
+  {
+    cases τ; exact Hsn.1
+  },
+  clear Hsn,
+  generalize h : empty_ctx = Γ,
+  rw h at *,
+  induction h generalizing γ; subst h,
+  { apply env_sub_unit },
+  { exfalso, unfold empty_ctx context_lookup at h_Hvar, contradiction },
+  { rw env_sub_lam, sorry }, -- FIXME: the lemma env_sub_lam is false, and makes this unprovable
+  { rw env_sub_ap,
+    rw h_ih_Hfunc,
+    rw h_ih_Hargs,
+    repeat { trivial },
+  },
+end
 
 lemma sn_implies_normalizes :
 ∀ e τ, SN τ e → normalizes e :=
@@ -205,7 +263,7 @@ begin
     },
     { -- induction
       unfold substitute, rw if_neg,
-      tactic.swap, { sorry },
+      tactic.swap, { tauto, },
       apply γ_ih,
       {
         unfold context_lookup at Hty_Hvar,
@@ -247,10 +305,12 @@ begin
       { apply substitution_property,
         assumption, constructor, assumption
       },
-      sorry, -- FIXME: add lemma
+      cases τ1; apply Hsn.1, -- this could be a separate lemma
     },
     {
       rw env_sub_lam,
+      -- FIXME: this is where the proof goes wrong and the env_sub and
+      -- substitute end up in the wrong order. The lemma env_sub_lam is false.
       constructor,
     },
     -- XXX: here, our proof diverges from the notes because we are doing
@@ -259,6 +319,7 @@ begin
     have h: (env_sub ((x,e')::γ) e) = (substitute x e' (env_sub γ e)),
     {
       unfold env_sub,
+
       sorry, -- FIXME: the notes say this, but not clear if/why it's true. Maybe env_sub is defined incorrectly?
     },
     rw <- h,
