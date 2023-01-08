@@ -126,6 +126,7 @@ def is_env_ctx : env → context → Prop
 
 lemma sub_property :
 ∀ x τx v Γ e τ,
+empty_ctx ⊢ v : τx →
 (x ↦ τx; Γ) ⊢ e : τ →
 Γ ⊢ substitute x v e : τ :=
 begin sorry end
@@ -155,7 +156,9 @@ begin
   cases Henv with Hre Henv,
   subst Hre,
   apply sub_property,
-  { exact Hty, }
+  tactic.swap,
+  { exact Hty, },
+  { cases Γ_hd_snd; cases Henv with _ Hsn; apply Hsn.1 },
 end
 
 lemma sn_preservation :
@@ -216,7 +219,10 @@ end
 
 lemma sn_implies_normalizes :
 ∀ e τ, SN τ e → normalizes e :=
-begin sorry end
+begin
+ introv Hsn,
+ cases τ, exact Hsn.2, exact Hsn.2.1
+end
 
 theorem sn_general :
   ∀ Γ γ e τ,
