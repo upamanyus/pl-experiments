@@ -66,6 +66,7 @@ def normalizes (e:exp) : Prop := ∃ v, evals_to e v
 def SN : typ → exp → Prop
 | unitT e := (empty_ctx ⊢ e : unitT) ∧ (normalizes e)
 | (arrowT τ1 τ2) e := (empty_ctx ⊢ e : arrowT τ1 τ2) ∧
+                      (normalizes e) ∧
                       (∀ (e':exp), (SN τ1 e') → (SN τ2 (ap e e')))
 
 -- Plan is to prove:
@@ -93,6 +94,8 @@ begin
     unfold SN,
     split,
     { constructor; assumption },
+    split,
+    { sorry },
     intros a Hsna,
     rename [Hty_x → x, Hty_e → e, Hty_τ1 → τ1, Hty_τ2 → τ2, Hty_Habs → Habs],
     sorry,
@@ -149,6 +152,14 @@ lemma env_sub_ap :
 ∀ γ f a, (env_sub γ (ap f a)) = (ap (env_sub γ f) (env_sub γ a)) :=
 begin sorry end
 
+lemma env_sub_lam :
+∀ γ x τ e, (env_sub γ (lam x τ e)) = lam x τ (env_sub γ e) :=
+begin sorry end
+
+lemma sn_implies_normalizes :
+∀ e τ, SN τ e → normalizes e :=
+begin sorry end
+
 theorem sn_general :
   ∀ Γ γ e τ,
   Γ ⊢ e : τ →
@@ -156,7 +167,7 @@ theorem sn_general :
   SN τ (env_sub γ e) :=
 begin
   introv Hty Henv,
-  induction Hty,
+  induction Hty generalizing γ,
   { -- case: unit
     rw env_sub_unit,
     unfold SN,
@@ -205,15 +216,66 @@ begin
       { apply Henv.1, },
     },
   },
-  {
-  sorry,
+  { -- case: lam. This is the tricky case
+    rename [Hty_x → x, Hty_τ1→τ1, Hty_τ2→τ2, Hty_e→e, Hty_Γ → Γ],
+    unfold SN,
+    split,
+    { -- property 1 in notes
+      apply substitution_property,
+      { assumption },
+      constructor, assumption
+    },
+    split,
+    { -- property 2 in notes
+      existsi _,
+      unfold evals_to,
+      split,
+      apply is_many_step.many_steps_reflexive,
+      rw env_sub_lam,
+      constructor,
+    },
+    -- property 3
+    intros e' Hsn,
+    have h := (sn_implies_normalizes _ _ Hsn),
+    cases h with w Heval,
+    cases Heval with Hsteps Hval,
+
+    apply (sn_preservation _ _ τ2 _ _).1,
+    tactic.rotate 2,
+    {
+      constructor,
+      { apply substitution_property,
+        assumption, constructor, assumption
+      },
+      sorry, -- FIXME: add lemma
+    },
+    {
+      rw env_sub_lam,
+      constructor,
+    },
+    -- XXX: here, our proof diverges from the notes because we are doing
+    -- call-by-name but the notes are doing call-by-value
+
+    have h: (env_sub ((x,e')::γ) e) = (substitute x e' (env_sub γ e)),
+    {
+      unfold env_sub,
+      sorry, -- FIXME: the notes say this, but not clear if/why it's true. Maybe env_sub is defined incorrectly?
+    },
+    rw <- h,
+    apply Hty_ih,
+    unfold update_context,
+    unfold is_env_ctx,
+    split, refl,
+    split, assumption,
+    split, sorry, -- FIXME: call-by-name vs call-by-value
+    assumption,
   },
-  {
-    specialize Hty_ih_Hfunc Henv,
-    specialize Hty_ih_Hargs Henv,
+  { -- case: ap
+    specialize Hty_ih_Hfunc _ Henv,
+    specialize Hty_ih_Hargs _ Henv,
     unfold SN at Hty_ih_Hfunc,
     rw env_sub_ap,
-    apply Hty_ih_Hfunc.2,
+    apply Hty_ih_Hfunc.2.2,
     apply Hty_ih_Hargs
   }
 end
