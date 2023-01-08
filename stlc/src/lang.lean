@@ -121,7 +121,7 @@ instance env_has_mem : has_mem (string × exp) env := list.has_mem
 
 def is_env_ctx : env → context → Prop
 | [] [] := true
-| ((x,v)::γ) ((y,τ)::Γ) := x=y ∧ is_env_ctx γ Γ ∧ is_val v ∧ SN τ v
+| ((x,v)::γ) ((y,τ)::Γ) := x=y ∧ is_env_ctx γ Γ ∧ SN τ v
 | _ _ := false
 
 lemma substitution_property :
@@ -144,8 +144,8 @@ lemma env_sub_unit :
 ∀ γ, env_sub γ unit = unit :=
 begin sorry end
 
-lemma env_sub_val :
-∀ γ v, is_val v → env_sub γ v = v :=
+lemma env_sub_sn :
+∀ γ v τ, SN τ v → env_sub γ v = v :=
 begin sorry end
 
 lemma env_sub_ap :
@@ -200,8 +200,8 @@ begin
       simp * at *,
       injection Hty_Hvar,
       subst h_1,
-      rw (env_sub_val _ _ Henv.2.1),
-      apply Henv.2.2
+      rw (env_sub_sn _ _ _ Henv.2),
+      apply Henv.2
     },
     { -- induction
       unfold substitute, rw if_neg,
@@ -267,7 +267,6 @@ begin
     unfold is_env_ctx,
     split, refl,
     split, assumption,
-    split, sorry, -- FIXME: call-by-name vs call-by-value
     assumption,
   },
   { -- case: ap
