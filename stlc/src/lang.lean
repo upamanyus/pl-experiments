@@ -322,8 +322,6 @@ begin
   apply γ_ih,
 end
 
--- FIXME: this lemma is false. If γ has an instantiation for x in it, then this
--- is wrong.
 lemma env_sub_lam_val :
 ∀ γ x τ e, is_val (env_sub γ (lam x τ e)) :=
 begin
@@ -337,11 +335,6 @@ begin
   rw if_neg, tactic.swap, trivial,
   apply γ_ih,
 end
-
-lemma env_sub_lam_step :
-∀ γ x τ1 e e',
-(env_sub γ (lam x τ1 e)).ap e' ↦str (env_sub γ (substitute x e' e)) :=
-begin sorry end
 
 lemma sub_lam_ne :
 ∀ (Γ:context) y ey τ2 e,
@@ -415,6 +408,140 @@ begin
     rw h_ih_Hargs,
     repeat { trivial },
   },
+end
+
+
+lemma double_substitute :
+∀ x τ1 τ2 ex1 ex2 e,
+SN τ1 ex1 →
+SN τ2 ex2 →
+(substitute x ex2 (substitute x ex1 e)) = substitute x ex1 e :=
+begin
+intros,
+  induction e,
+  { unfold substitute, by_cases (x = e),
+    { simp *,
+      have h : (substitute e ex2 ex1 = env_sub [(e,ex2)] ex1),
+      { unfold env_sub },
+      rw h,
+      rw env_sub_sn,
+      assumption
+    },
+    {
+      rw if_neg, tactic.swap, trivial,
+      unfold substitute, rw if_neg, trivial
+    }
+  },
+  { unfold substitute },
+  {
+    unfold substitute,
+    by_cases (x = e_x),
+    { simp *, unfold substitute, simp * },
+    { rw if_neg, tactic.swap, trivial,
+      unfold substitute, rw if_neg, tactic.swap, trivial,
+      rw e_ih,
+    }
+  },
+  {
+    unfold substitute,
+    rw [e_ih_f, e_ih_a]
+  }
+end
+
+lemma substitute_commute :
+∀ x y τx τy ex ey e,
+SN τx ex →
+SN τy ey →
+x ≠ y →
+(substitute x ex (substitute y ey e)) = (substitute y ey (substitute x ex e)) :=
+begin
+  intros,
+  induction e,
+  { -- case: var
+    unfold substitute,
+    by_cases (y = e),
+    { simp *, subst h,
+      rw if_neg, tactic.swap, trivial,
+      unfold substitute,
+      simp *,
+      have h : (substitute x ex ey = env_sub [(x,ex)] ey),
+      { unfold env_sub },
+      rw h, apply env_sub_sn, assumption
+    },
+    {
+      rw if_neg, tactic.swap, trivial,
+      unfold substitute,
+      by_cases (x = e),
+      {
+        simp *,
+        have h : (substitute y ey ex = env_sub [(y,ey)] ex),
+        { unfold env_sub },
+        rw h, rw env_sub_sn, assumption
+      },
+      {
+        rw if_neg, unfold substitute, rw if_neg, repeat { assumption }
+      }
+    }
+  },
+  { -- case: unit
+    unfold substitute,
+  },
+  { -- case: lam
+    unfold substitute,
+    by_cases (y = e_x); by_cases (x = e_x),
+    { simp *, unfold substitute, simp * },
+    { simp *, unfold substitute, rw if_neg, simp *, assumption },
+    { rw if_neg, simp *, unfold substitute, simp *, assumption },
+    { rw if_neg, rw if_neg, unfold substitute, simp *, assumption, assumption },
+  },
+  { -- case: ap
+    unfold substitute,
+    rw e_ih_f,
+    rw e_ih_a,
+  }
+end
+
+-- XXX: this is a tricky lemma because of variable shadowing. If we worked
+-- modulo α-equivalence, this trickiness might be avoided.
+lemma env_sub_lam_step :
+∀ γ c x τ1 e e',
+is_env_ctx γ c →
+SN τ1 e' →
+(env_sub γ (lam x τ1 e)).ap e' ↦str (env_sub γ (substitute x e' e)) :=
+begin
+  introv Hctx Hsn,
+  induction γ generalizing e c,
+  { unfold env_sub, constructor },
+  cases γ_hd with y vy,
+  unfold env_sub,
+  unfold substitute,
+  by_cases (y = x),
+  {
+    simp *,
+    cases c,
+    { exfalso, unfold is_env_ctx at *, assumption },
+    cases c_hd,
+    unfold is_env_ctx at Hctx,
+    rw double_substitute,
+    { apply γ_ih, apply Hctx.2.1 },
+    { assumption },
+    { apply Hctx.2.2 },
+  },
+  {
+    rw if_neg, tactic.swap, tauto,
+    cases c,
+    { exfalso, unfold is_env_ctx at *, assumption },
+    cases c_hd,
+    unfold is_env_ctx at Hctx,
+    rw substitute_commute,
+    {
+      apply γ_ih,
+      { apply Hctx.2.1 },
+    },
+    { apply Hctx.2.2 },
+    { assumption },
+    { assumption },
+  }
 end
 
 lemma sn_implies_normalizes :
@@ -515,6 +642,8 @@ begin
     },
     {
       apply env_sub_lam_step,
+      { assumption },
+      { assumption }
     },
     -- XXX: here, our proof diverges from the notes because we are doing
     -- call-by-name but the notes are doing call-by-value
