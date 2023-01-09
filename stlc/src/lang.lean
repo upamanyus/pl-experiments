@@ -140,14 +140,57 @@ def is_env_ctx : env → context_list → Prop
 | ((x,v)::γ) ((y,τ)::Γ) := x=y ∧ is_env_ctx γ Γ ∧ SN τ v
 | _ _ := false
 
--- Possible approach: (list_to_ctx Γ) ⊢ e : τ
+-- FIXME: copy/paste from e-lang
+def context_included (Γ Γ':context) : Prop :=
+  ∀ x y,
+    Γ x = some y → Γ' x = some y
+
+def included_update :
+∀ Γ Γ' x τ,
+ context_included Γ Γ' →
+ context_included (x ↦ τ ; Γ) (x ↦ τ ; Γ')
+ :=
+begin
+ introv,
+ intros Hinc,
+ unfold context_included update_context at *,
+ intros x1 y Hlookup,
+ by_cases (x = x1),
+ { rwa if_pos at *; assumption,
+ },
+ rw if_neg at * ; try { assumption },
+ { apply Hinc, assumption }
+end
+
+def empty_included:
+  ∀ Γ, context_included empty_ctx Γ :=
+begin
+  intros,
+  intros _ _ H,
+  exfalso, unfold empty_ctx at *, contradiction
+end
 
 lemma weakening :
-  ∀ Γ e τ,
-  empty_ctx ⊢ e : τ →
+  ∀ Γ' Γ e τ,
+  context_included Γ' Γ →
+  Γ' ⊢ e : τ →
   Γ ⊢ e : τ :=
 begin
-sorry
+  introv Hinc Hty,
+  induction Hty generalizing Γ,
+  { /- case: unit -/ constructor },
+  { /- case: var -/ constructor, apply Hinc, assumption },
+  { -- case: lam
+    constructor,
+    apply Hty_ih,
+    apply included_update,
+    assumption,
+  },
+  { -- case: ap
+    constructor,
+    { apply Hty_ih_Hfunc, assumption },
+    { apply Hty_ih_Hargs, assumption },
+  }
 end
 
 lemma sub_property :
@@ -170,7 +213,8 @@ begin
       injection Hty_Hvar,
       subst h_1,
       apply weakening,
-      assumption
+      tactic.swap, assumption,
+      apply empty_included
     },
     {
       rw if_neg at *;
