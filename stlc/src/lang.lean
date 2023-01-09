@@ -58,7 +58,7 @@ notation Γ ` ⊢ `:90 e:90 ` : `:90 τ:90 := has_type Γ e τ
 
 inductive is_many_step : exp → exp → Prop
 | many_steps_reflexive e:exp : is_many_step e e
-| many_steps_transitive (e1 e2 e3:exp) (Hsteps:is_many_step e1 e2) (Hstep:is_step e2 e3)
+| many_steps_transitive (e1 e2 e3:exp) (Hsteps:is_many_step e2 e3) (Hstep:is_step e1 e2)
    : is_many_step e1 e3
 
 def evals_to (e v:exp) : Prop := is_many_step e v ∧ is_val v
@@ -294,13 +294,84 @@ begin
   { cases c_hd_snd; cases Henv with _ Hsn; apply Hsn.1 },
 end
 
+lemma sn_implies_normalizes :
+∀ e τ, SN τ e → normalizes e :=
+begin
+ introv Hsn,
+ cases τ, exact Hsn.2, exact Hsn.2.1
+end
+
 lemma sn_preservation :
   ∀ e e' τ,
   empty_ctx ⊢ e : τ →
   (e ↦str e') →
-  (SN τ e' → SN τ e) ∧
-  (SN τ e → SN τ e') :=
-begin sorry end
+  (SN τ e' → SN τ e) -- ∧ (SN τ e → SN τ e')
+:=
+begin
+introv Hty Hstep,
+{ -- backwards preservation
+  intros Hsn,
+  generalize h : (empty_ctx = Γ),
+  rw h at *,
+  -- induction Hty generalizing e'; subst h,
+  induction τ generalizing e' e; subst h,
+  -- cases Hstep,
+  -- induction Hty; subst h,
+  {
+    unfold SN,
+    split, assumption,
+    have h := (sn_implies_normalizes _ _ Hsn),
+    cases h,
+    existsi h_w,
+    unfold evals_to at *,
+    split,
+    { apply is_many_step.many_steps_transitive,
+      apply h_h.1, assumption
+    },
+    apply h_h.2,
+  },
+  { unfold SN,
+    split,
+    { assumption },
+    split,
+    {
+      have h := (sn_implies_normalizes _ _ Hsn),
+      cases h,
+      existsi h_w,
+      unfold evals_to at *,
+      cases h_h,
+      split,
+      {
+        apply is_many_step.many_steps_transitive,
+        { assumption },
+        assumption
+      },
+      assumption
+    },
+    cases Hstep,
+    {
+      unfold SN at Hsn,
+      intros a Hsna,
+      apply τ_ih_τ2,
+      { constructor, assumption  },
+      { apply Hsn.2.2, assumption },
+      constructor,
+      { assumption },
+      cases τ_τ1; apply Hsna.1,
+    },
+    {
+      intros a Hsna,
+      unfold SN at Hsn,
+      apply τ_ih_τ2,
+      { constructor, assumption },
+      { apply Hsn.2.2, assumption },
+      constructor,
+      { assumption },
+      cases τ_τ1; apply Hsna.1,
+    }
+  },
+},
+end
 
 lemma env_sub_unit :
 ∀ γ, env_sub γ unit = unit :=
@@ -409,7 +480,6 @@ begin
     repeat { trivial },
   },
 end
-
 
 lemma double_substitute :
 ∀ x τ1 τ2 ex1 ex2 e,
@@ -544,13 +614,6 @@ begin
   }
 end
 
-lemma sn_implies_normalizes :
-∀ e τ, SN τ e → normalizes e :=
-begin
- introv Hsn,
- cases τ, exact Hsn.2, exact Hsn.2.1
-end
-
 theorem sn_general :
   ∀ Γ c γ e τ,
   Γ = mk_context c →
@@ -631,7 +694,7 @@ begin
     cases h with w Heval,
     cases Heval with Hsteps Hval,
 
-    apply (sn_preservation _ _ τ2 _ _).1,
+    apply (sn_preservation _ _ τ2 _ _),
     tactic.rotate 2,
     {
       constructor,
