@@ -1,5 +1,6 @@
 import data.list.basic
 import data.finmap
+import data.list.alist
 
 inductive typ : Type
 | unitT : typ
@@ -14,22 +15,23 @@ inductive exp : Type
 open exp
 open typ
 
--- FIXME: should partial functions to separate file
+-- FIXME: should move partial functions to separate file
 -- Statics:
-def context := list (string × typ)
+def context := string → option typ
 
 def update_context (Γ:context) (x:string) (t:typ) : context :=
-  (x, t) :: Γ
-notation x `↦` τ `;` Γ := update_context Γ x τ
-def empty_ctx : context := []
+  λ y, if (x = y) then t else Γ y
 
-def context_lookup : context → string → option typ
-| [] x := none
-| ((y, τ) :: l) x := if x = y then τ else context_lookup l x
+notation x `↦` τ `;` Γ := update_context Γ x τ
+def empty_ctx : context := (λ _, none)
+
+-- def context_lookup : context → string → option typ
+-- | [] x := none
+-- | ((y, τ) :: l) x := if x = y then τ else context_lookup l x
 
 inductive has_type : context → exp → typ → Prop
 | unit (Γ:context) : has_type Γ unit unitT
-| var (Γ:context) (x:string) (τ:typ) (Hvar:context_lookup Γ x = some τ) : has_type Γ (var x) τ
+| var (Γ:context) (x:string) (τ:typ) (Hvar:Γ x = some τ) : has_type Γ (var x) τ
 | lam (Γ:context) (x:string) (τ1 τ2:typ) (e:exp) (Habs:has_type (x↦τ1 ; Γ) e τ2) : has_type Γ (lam x τ1 e) (arrowT τ1 τ2)
 | ap  (Γ:context) (f a:exp) (τ1 τ2:typ) (Hfunc:has_type Γ f (arrowT τ1 τ2)) (Hargs:has_type Γ a τ1): has_type Γ (ap f a) τ2
 
@@ -105,10 +107,15 @@ end
 
 -- def env := finmap (λ _:string, exp)
 def env := list (string × exp)
+-- def env := alist (λ _:string, exp)
 
 def env_sub : env → exp → exp
 | [] e := e
-| ((x, ex) :: l) e := env_sub l (substitute x ex e)
+| (⟨x, ex⟩::l) e := env_sub l (substitute x ex e)
+
+-- def env_sub : env → exp → exp
+-- | (alist.mk [] _) e := e
+-- | (alist.mk (⟨x, ex⟩ :: l) nd) e := env_sub (alist.mk l (list.nodupkeys_cons.1 nd).2) (substitute x ex e)
 
 instance env_has_mem : has_mem (string × exp) env := list.has_mem
 
@@ -119,10 +126,21 @@ instance env_has_mem : has_mem (string × exp) env := list.has_mem
 --   | ((sigma.mk x ex) :: l) := (substitute x ex e)
 --   end
 
-def is_env_ctx : env → context → Prop
+-- def is_env_ctx : env → context → Prop
+-- | γ Γ := ∀ x v, (x,v) ∈ γ → (∃ τ, Γ x = some τ ∧ SN τ v)
+-- | γ Γ := ∀ x τ,  Γ x = some τ → (∃ v, (x,v) ∈ γ ∧ SN τ v)
+
+def context_list := list (string × typ)
+def mk_context : context_list → context
+| [] := empty_ctx
+| ((x,τ) :: ctx) := (x↦τ; mk_context ctx)
+
+def is_env_ctx : env → context_list → Prop
 | [] [] := true
 | ((x,v)::γ) ((y,τ)::Γ) := x=y ∧ is_env_ctx γ Γ ∧ SN τ v
 | _ _ := false
+
+-- Possible approach: (list_to_ctx Γ) ⊢ e : τ
 
 lemma weakening :
   ∀ Γ e τ,
@@ -131,7 +149,6 @@ lemma weakening :
 begin
 sorry
 end
-
 
 lemma sub_property :
 ∀ x τx v Γ e τ,
@@ -145,7 +162,7 @@ begin
   induction Hty generalizing Γ; subst h,
   { unfold substitute, constructor },
   { unfold substitute,
-    unfold update_context context_lookup at Hty_Hvar,
+    unfold update_context at Hty_Hvar,
     by_cases (x = Hty_x),
     {
       simp *,
@@ -164,52 +181,73 @@ begin
   },
   { -- case: lam
     unfold substitute,
-    unfold update_context context_lookup at *,
     by_cases (x = Hty_x),
     {
       simp *,
       constructor,
       subst h,
-      sorry, -- TODO: lemma about shadowed variable
+      have h : (x↦Hty_τ1;(x↦τx;Γ)) = (x↦Hty_τ1;Γ),
+      { unfold update_context, apply funext, intros y,
+        by_cases (x = y),
+        { simp * },
+        { repeat { rw (if_neg h)} }
+      },
+      rw <- h,
+      assumption
     },
     {
       rw if_neg, tactic.swap, trivial,
       constructor,
       apply Hty_ih,
-      sorry, -- FIXME: with the list defn of Γ, it's not clear that reordering
-      -- elements of Γ for different vars preserves typing.
+      unfold update_context,
+      apply funext,
+      intros y,
+      by_cases (x = y),
+      { subst h, simp *, rw if_neg, tauto },
+      { rw if_neg, tactic.swap, tauto, by_cases (Hty_x = y),
+        { simp * },
+        { repeat { rw if_neg }, repeat { assumption }},
+      },
     },
+  },
+  { -- case : ap
+    unfold substitute,
+    constructor,
+    { apply Hty_ih_Hfunc, refl },
+    { apply Hty_ih_Hargs, refl }
   }
 end
 
 lemma substitution_property :
-  ∀ γ Γ e τ ,
-  is_env_ctx γ Γ →
+  ∀ γ Γ c e τ ,
+  is_env_ctx γ c →
+  Γ = mk_context c →
   Γ ⊢ e : τ →
   empty_ctx ⊢ env_sub γ e : τ
   :=
 begin
-  introv Henv Hty,
-  induction γ generalizing Γ e,
+  introv Henv HΓ Hty,
+  subst HΓ,
+  induction γ generalizing c e,
   {
-    induction Γ,
+    induction c,
     { unfold env_sub, unfold empty_ctx, assumption },
     { exfalso, unfold is_env_ctx at Henv, trivial },
   },
-  induction Γ,
+  induction c,
   { exfalso, cases γ_hd, unfold is_env_ctx at Henv, trivial },
   cases γ_hd with x v,
   unfold env_sub,
-  cases Γ_hd,
+  cases c_hd,
   unfold is_env_ctx at Henv,
-  apply (γ_ih Γ_tl),
+  apply (γ_ih c_tl),
   { apply Henv.2.1 },
   cases Henv with Hre Henv,
   subst Hre,
   apply sub_property,
   tactic.swap,
   { exact Hty, },
-  { cases Γ_hd_snd; cases Henv with _ Hsn; apply Hsn.1 },
+  { cases c_hd_snd; cases Henv with _ Hsn; apply Hsn.1 },
 end
 
 lemma sn_preservation :
@@ -263,7 +301,7 @@ begin sorry end
 
 lemma sub_lam_ne :
 ∀ (Γ:context) y ey τ2 e,
-(list.all₂ (λ (x:string×typ), y ≠ x.fst) Γ) →
+(∀ x τx, Γ x = some τx → y ≠ x) →
 Γ ⊢ e : τ2 →
 (substitute y ey e) = e :=
 begin
@@ -271,16 +309,8 @@ begin
   induction Hty,
   { unfold substitute },
   { unfold substitute, rw if_neg,
-    induction Hty_Γ,
-    { unfold context_lookup at *, contradiction },
-    cases Hty_Γ_hd,
-    simp at Hne,
-    unfold context_lookup at Hty_Hvar,
-    by_cases (Hty_x = Hty_Γ_hd_fst),
-    { subst h, tauto },
-    rw if_neg at Hty_Hvar, tactic.swap, trivial,
-    apply Hty_Γ_ih,
-    assumption, tauto
+    apply Hne,
+    { assumption },
   },
   {
     unfold substitute,
@@ -288,8 +318,12 @@ begin
     { simp * },
     { rw if_neg, tactic.swap, trivial,
       rw Hty_ih,
-      { unfold update_context,
-        simp * }
+      { introv Hlookup,
+        unfold update_context at Hlookup,
+        by_cases (Hty_x = x),
+        { simp * at Hlookup, subst h, tauto },
+        { rw if_neg at Hlookup, apply Hne, assumption, assumption },
+      }
     }
   },
   {
@@ -313,7 +347,7 @@ begin
   rw h at *,
   induction h generalizing γ; subst h,
   { apply env_sub_unit },
-  { exfalso, unfold empty_ctx context_lookup at h_Hvar, contradiction },
+  { exfalso, unfold empty_ctx at h_Hvar, contradiction },
   {
     induction γ,
     { unfold env_sub },
@@ -326,7 +360,10 @@ begin
       rw sub_lam_ne,
       { apply γ_ih },
       tactic.swap, assumption,
-      { unfold update_context, simp * },
+      { intros, unfold update_context at *, by_cases h_x = x,
+        { simp *, subst h, tauto },
+        { rw if_neg at *, unfold empty_ctx at *, contradiction, assumption }
+      }
     }
   },
   { rw env_sub_ap,
@@ -344,13 +381,14 @@ begin
 end
 
 theorem sn_general :
-  ∀ Γ γ e τ,
+  ∀ Γ c γ e τ,
+  Γ = mk_context c →
   Γ ⊢ e : τ →
-  is_env_ctx γ Γ →
+  is_env_ctx γ c →
   SN τ (env_sub γ e) :=
 begin
-  introv Hty Henv,
-  induction Hty generalizing γ,
+  introv HΓ Hty Henv,
+  induction Hty generalizing γ c; subst HΓ,
   { -- case: unit
     rw env_sub_unit,
     unfold SN,
@@ -361,15 +399,15 @@ begin
     split; constructor
   },
   { -- case: var
-    induction γ generalizing Hty_Γ,
+    induction γ generalizing c,
     {
-      induction Hty_Γ,
-      { exfalso, unfold context_lookup at *, contradiction },
+      induction c,
+      { exfalso, contradiction },
       { exfalso, unfold is_env_ctx at *, contradiction }
     },
-    induction Hty_Γ,
-    { exfalso, unfold context_lookup at *, contradiction },
-    cases γ_hd, cases Hty_Γ_hd,
+    induction c,
+    { exfalso, contradiction },
+    cases γ_hd, cases c_hd,
     unfold is_env_ctx at *,
     unfold env_sub,
     cases Henv with Hre Henv,
@@ -377,10 +415,11 @@ begin
     by_cases (Hty_x = γ_hd_fst),
     { -- the first thing in Γ/γ is the var Hty_x
       subst h,
-      unfold env_sub substitute at Hty_Γ_ih,
-      unfold context_lookup at Hty_Hvar,
+      unfold env_sub substitute at c_ih,
       unfold substitute at *,
       simp * at *,
+      unfold mk_context update_context at Hty_Hvar,
+      simp * at Hty_Hvar,
       injection Hty_Hvar,
       subst h_1,
       rw (env_sub_sn _ _ _ Henv.2),
@@ -389,23 +428,22 @@ begin
     { -- induction
       unfold substitute, rw if_neg,
       tactic.swap, { tauto, },
+      unfold mk_context update_context at Hty_Hvar,
+      rw if_neg at Hty_Hvar,
+      tactic.swap, { tauto },
       apply γ_ih,
-      {
-        unfold context_lookup at Hty_Hvar,
-        rw if_neg at Hty_Hvar,
-        tactic.swap, { assumption },
-        assumption,
-      },
       { apply Henv.1, },
+      { assumption }
     },
   },
   { -- case: lam. This is the tricky case
-    rename [Hty_x → x, Hty_τ1→τ1, Hty_τ2→τ2, Hty_e→e, Hty_Γ → Γ],
+    rename [Hty_x → x, Hty_τ1→τ1, Hty_τ2→τ2, Hty_e→e],
     unfold SN,
     split,
     { -- property 1 in notes
       apply substitution_property,
       { assumption },
+      { refl },
       constructor, assumption
     },
     split,
@@ -427,7 +465,7 @@ begin
     {
       constructor,
       { apply substitution_property,
-        assumption, constructor, assumption
+        assumption, refl, constructor, assumption
       },
       cases τ1; apply Hsn.1, -- this could be a separate lemma
     },
@@ -440,16 +478,16 @@ begin
     have h: (env_sub ((x,e')::γ) e) = (env_sub γ (substitute x e' e)),
     { unfold env_sub },
     rw <- h,
-    apply Hty_ih,
-    unfold update_context,
+    apply Hty_ih _ ((x, τ1) :: c),
+    { unfold mk_context },
     unfold is_env_ctx,
     split, refl,
     split, assumption,
     assumption,
   },
   { -- case: ap
-    specialize Hty_ih_Hfunc _ Henv,
-    specialize Hty_ih_Hargs _ Henv,
+    specialize Hty_ih_Hfunc _ _ _ Henv, trivial,
+    specialize Hty_ih_Hargs _ _ _ Henv, trivial,
     unfold SN at Hty_ih_Hfunc,
     rw env_sub_ap,
     apply Hty_ih_Hfunc.2.2,
