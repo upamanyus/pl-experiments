@@ -730,3 +730,13 @@ begin
     apply Hty_ih_Hargs
   }
 end
+
+theorem strong_normalization :
+  ∀ e τ, (empty_ctx ⊢ e : τ) → normalizes e :=
+begin
+  introv Hty,
+  have h := (sn_general empty_ctx [] [] e τ _ Hty _),
+  { apply sn_implies_normalizes, assumption },
+  { unfold mk_context },
+  { unfold is_env_ctx },
+end
