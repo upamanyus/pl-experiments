@@ -1,6 +1,4 @@
-import data.list.basic
-import data.finmap
-import data.list.alist
+import tactic.basic
 
 inductive typ : Type
 | unitT : typ
