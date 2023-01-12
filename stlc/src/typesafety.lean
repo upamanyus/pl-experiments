@@ -34,18 +34,22 @@ def interp_val : typ → (set exp)
 
 def interp_exp (τ:typ) := step_closure (interp_val τ)
 
--- XXX: now, we're gonna call context_list Γ, and have to explicitly to
--- (mk_context Γ) in has_type.
-def interp_ctx (Γ:context_list) : set env := { γ | is_env_ctx γ Γ }
-
 notation `V⟦` τ `⟧` := interp_val τ
 notation `E⟦` τ `⟧` := interp_exp τ
+
+-- XXX: now, we're gonna call context_list Γ, and have to explicitly to
+-- (mk_context Γ) in has_type.
+def interp_ctx : context_list → set env
+| [] [] := true
+| ((y,τ)::Γ) ((x,v)::γ) := x=y ∧ interp_ctx Γ γ ∧ (v ∈ V⟦τ⟧)
+| _ _ := false
+
 notation `G⟦` Γ `⟧` := interp_ctx Γ
 
 def semantic_has_type (Γ:context_list) (e:exp) (τ:typ) : Prop :=
   ∀ γ, γ ∈ G⟦Γ⟧ → env_sub γ e ∈ E⟦τ⟧
 
-notation Γ `⊨`:90 e:90 `:`:90 τ := semantic_has_type Γ e τ
+notation Γ ` ⊨ `:90 e:90 ` : `:90 τ := semantic_has_type Γ e τ
 
 def safe (e:exp) : Prop :=
 ∀ e', (e ↦* e') → (is_val e') ∨ (∃ e'', e' ↦str e'')
@@ -88,11 +92,46 @@ begin
   { -- otherwise, show
     unfold semantic_has_type at HTy,
     specialize HTy [] _,
-    { unfold interp_ctx },
+    { constructor },
     unfold env_sub at HTy,
     specialize HTy e' ⟨Hstep, h⟩,
     left,
     apply interp_val_implies_closedval,
     assumption
   }
+end
+
+theorem fundamental_property :
+∀ Γ e τ,
+  (mk_context Γ ⊢ e : τ) →
+  (Γ ⊨ e : τ) :=
+begin
+  introv Hty,
+  unfold semantic_has_type,
+  generalize h : (mk_context Γ) = (ctx),
+  rw h at *,
+  induction Hty generalizing Γ; subst h,
+  { -- case: unit
+    introv Hγ, rw env_sub_unit,
+    unfold interp_exp step_closure, simp *,
+    introv Hstep Hirred,
+    cases Hstep,
+    { constructor },
+    exfalso, cases Hstep_Hstep,
+  },
+  { -- case: var
+    introv Hγ,
+    rename [Hty_x → x, Hty_τ → τ],
+    -- Argument:
+    -- Knowing (mk_context Γ) x = some τ and γ ∈ G⟦Γ⟧ should tells us:
+    -- ∃ (x,vx) ∈ γ, vx ∈ V⟦τ⟧,
+    --    env_sub γ (var x) = vx
+    -- At that point, we're done because V⟦τ⟧ ⊆ E⟦τ⟧.
+    sorry,
+  },
+  { -- case: abs; this is where induction will be a bit tricky.
+    introv Hγ,
+    sorry,
+  },
+  repeat { sorry }
 end
