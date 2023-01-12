@@ -75,6 +75,7 @@ def SN : typ → exp → Prop
 -- Proving b is easy by induction, it's basically baked into the definition
 -- Proving a by induction on (∅ ⊢ e:τ) will be tricky in the has_type.lam case.
 
+/-
 lemma bad_SN_a :
   ∀ e τ,
   empty_ctx ⊢ e:τ →
@@ -102,6 +103,7 @@ begin
   },
   sorry,
 end
+-/
 
 -- def env := finmap (λ _:string, exp)
 def env := list (string × exp)
