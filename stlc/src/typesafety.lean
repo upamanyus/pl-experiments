@@ -1,4 +1,5 @@
 import lang
+import normalization
 import data.set
 
 -- V⟦−⟧ : type → PowerSet(ClosedVal)
@@ -108,7 +109,12 @@ lemma env_sub_lam_notin :
   not_in_env γ x →
   env_sub γ (lam x τ e) = lam x τ (env_sub γ e) :=
 begin
-sorry
+  introv Hnot,
+  induction γ,
+  { unfold env_sub },
+  cases γ_hd,
+  unfold env_sub,
+  sorry,
 end
 
 lemma env_sub_lam_in :
@@ -125,7 +131,22 @@ lemma substitution_lemma :
   not_in_env γ x →
   env_sub ((x,vx)::γ) e = substitute x vx (env_sub γ e) :=
 begin
-sorry
+  introv Hnot,
+  unfold env_sub,
+  induction γ generalizing e,
+  { unfold env_sub },
+  cases γ_hd,
+  unfold env_sub,
+  rw <- γ_ih, tactic.swap,
+  {
+    intros v,
+    specialize Hnot v,
+    intros H,
+    apply Hnot,
+    right, assumption
+  },
+  rw substitute_commute,
+  repeat { sorry }
 end
 
 theorem fundamental_property :
